@@ -1,0 +1,36 @@
+cabal-version:       >=1.10
+
+name:                CloudBuildingBlocks
+version:             0.0.1.0
+synopsis:            Various modules to build cloud services
+-- description:
+-- bug-reports:
+license:             MIT
+license-file:        LICENSE
+author:              Charles St-Pierre
+maintainer:          charles.stpierre@gmail.com
+-- copyright:
+-- category:
+build-type:          Simple
+extra-source-files:  CHANGELOG.md
+
+executable lb
+  main-is:             LoadBalancer.hs
+  -- other-modules:
+  -- other-extensions:
+  build-depends:       base >=4.13,
+                       network, network-simple,
+                       stm, bytestring, options
+  hs-source-dirs:      app
+  ghc-options:        -threaded
+  default-language:    Haskell2010
+
+executable appserver
+  main-is:             AppServer.hs
+  -- other-modules:
+  -- other-extensions:
+  build-depends:       base >=4.13,
+                       options, happstack-server
+  hs-source-dirs:      app
+  ghc-options:         -threaded
+  default-language:    Haskell2010
