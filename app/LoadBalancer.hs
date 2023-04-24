@@ -2,8 +2,10 @@
 
 module Main where
 
+import Control.Concurrent.Async
 import Control.Concurrent.STM
 import Network.Simple.TCP
+import Network.Socket (gracefulClose)
 import qualified Data.ByteString as B
 import Options
 
@@ -37,7 +39,7 @@ getNextServer sharedIndex = do
     return (getAppServers !! nextIndexValue)
 
 {- | Recursively copies data from one socket to another.
-Stops once we have reached \r\n\r\ which is the termination sequence.
+     Stops when the connection closes.
 -}
 transferData :: Socket -- ^ The socket we are getting the data from.
              -> Socket -- ^ The socket we are getting the data to.
@@ -48,7 +50,7 @@ transferData from to = do
         Nothing       -> return ()
         (Just someData) -> do
             send to someData
-            if B.isSuffixOf "\r\n\r\n" someData  -- This means we have an empty line so the communication is done
+            if B.null someData
                 then return ()
                 else transferData from to
 
@@ -57,15 +59,21 @@ roundRobin :: IO ()
 roundRobin = runCommand $ \opts _ -> do
     let portNumber = portnumber opts
     indexServeur <- newTVarIO 0
-    serve HostAny (show portNumber) $ \(connectionSocket, remoteAddr) -> do
+    serve HostAny (show portNumber) $ \(connectionSocketClient, remoteAddr) -> do
         putStrLn $ "TCP connection established on the Load Balancer from " ++ show remoteAddr
         (Service addr port) <- atomically $ getNextServer indexServeur
-        connect addr  port $ \(connectionSocketClient, remoteAddr) -> do
+        connect addr  port $ \(connectionSocketServer, remoteAddr) -> do
             putStrLn $ "Connection established to " ++ show remoteAddr
-            transferData connectionSocket connectionSocketClient
-            putStrLn "Request sent"
-            transferData connectionSocketClient connectionSocket
-            putStrLn "Response sent"
+
+            -- The sockets are always blocking while listening so they need to be in their own thread. 
+            withAsync (transferData connectionSocketClient connectionSocketServer) $ \client2Server -> do
+                putStrLn "Request sent"
+                withAsync (transferData connectionSocketServer connectionSocketClient) $ \server2client -> do
+                    putStrLn "Response sent"
+                    wait client2Server
+                    gracefulClose connectionSocketServer 1000-- Once the client disconnected, we disconnect the server.
+                    wait server2client
+            
 
 main :: IO ()
 main = roundRobin
